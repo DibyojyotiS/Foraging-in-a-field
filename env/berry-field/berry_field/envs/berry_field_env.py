@@ -1,8 +1,11 @@
 import numpy as np
 import csv
-
 import gym
-from gym import spaces
+import pyglet
+# from matplotlib import pyplot as plt
+
+from .interval_tree import IntervalTree
+from .rendering import Viewer
 
 
 class BerryFieldEnv(gym.Env):
@@ -34,9 +37,11 @@ class BerryFieldEnv(gym.Env):
         self.max_steps = max_steps
         self.num_steps = 0
 
-        self.state = initial_state
-        self.action_space = spaces.Discrete(9)
+        self.state = list(initial_state)
+        self.action_space = gym.spaces.Discrete(9)
         self.observation_space = observation_space_size
+
+        self.window = None
 
         self.action_switcher = {
             1: (0, -1),
@@ -59,8 +64,13 @@ class BerryFieldEnv(gym.Env):
                 for i, row in enumerate(csv_reader):
                     rows[i] = np.array([int(float(val)) for val in row], dtype=int)
 
-        assert berry_coordinates.shape == (num_berries, 4)
-        assert patch_coordinates.shape == (num_patches, 2)
+        assert berry_coordinates.shape == (self.num_berries, 4)
+        assert patch_coordinates.shape == (self.num_patches, 2)
+
+        self.berry_info = berry_coordinates.copy()  # This is used to match berry_id(index) to their size and position
+        self.berry_info[:, 0] = 1
+        data_x = []  # To construct interval tree in the X-direction
+        data_y = []  # To construct interval tree in the Y-direction
 
         # Constructing numpy array to store the current state of the field
         # 1 represents uncollected berry
@@ -68,44 +78,105 @@ class BerryFieldEnv(gym.Env):
         self.field = np.zeros(field_size, dtype=int)
 
         # Taking berries to be square
-        for berry_info in berry_coordinates:
-            # If the dimension of the berry is even, taking the coordinate (given)
-            # to be the upper-left corner of the 2X2 square in the center
-            if berry_info[1] % 2 == 0:
-                left = int(berry_info[1]/2 - 1)
-                right = int(berry_info[1]/2)
-            # If the dimension of the berry is odd, taking the coordinate (given)
-            # to be the center of that square
-            else:
-                left = int(berry_info[1]/2)
-                right = int(berry_info[1]/2)
+        for berry_id, berry_info in enumerate(berry_coordinates):
+            left, right, _, _ = self.get_range(berry_info[1], berry_info[1])
+
+            data_x.append([berry_info[2]-left, berry_info[2]+right, berry_id])
+            data_y.append([berry_info[3]-left, berry_info[3]+right, berry_id])
 
             self.field[(berry_info[3]-left):(berry_info[3]+right+1),
-                       (berry_info[2]-left):(berry_info[2]+right+1)] = berry_info[1]
+                       (berry_info[2]-left):(berry_info[2]+right+1)] += berry_info[1]
+
+        # Constructing interval trees for X and Y direction
+        self.interval_tree_x = IntervalTree(data_x, 0, field_size[0])
+        self.interval_tree_y = IntervalTree(data_y, 0, field_size[0])
+
+    def get_range(self, size_x, size_y):
+        # If the size is even, taking the coordinate (given) to be the upper-left corner of the 2X2 square in the center
+        # If the size is odd, taking the coordinate (given) to be the center of that square
+
+        if size_x % 2 == 0:
+            left = int(size_x / 2 - 1)
+        else:
+            left = int(size_x / 2)
+        right = int(size_x / 2)
+
+        if size_y % 2 == 0:
+            up = int(size_y / 2 - 1)
+        else:
+            up = int(size_y / 2)
+        down = int(size_y / 2)
+
+        return left, right, up, down
+
+    # Removes berry from the field
+    def remove_berry(self, berry_id):
+        self.berry_info[berry_id, 0] = 0
+
+        berry_info = self.berry_info[berry_id]
+
+        left, right, _, _ = self.get_range(berry_info[1], berry_info[1])
+
+        self.field[(berry_info[3] - left):(berry_info[3] + right + 1),
+                   (berry_info[2] - left):(berry_info[2] + right + 1)] -= berry_info[1]
 
     # Returns a list of berry sizes hitted by the agent and also removes those berries from the field
     def get_hitted_berries_size(self):
-        # If the dimension of the agent is even, taking the coordinate (current state)
-        # to be the upper-left corner of the 2X2 square in the center
-        if self.agent_size % 2 == 0:
-            left = int(self.agent_size / 2 - 1)
-            right = int(self.agent_size / 2)
-        # If the dimension of the agent is odd, taking the coordinate (current state)
-        # to be the center of that square
-        else:
-            left = int(self.agent_size / 2)
-            right = int(self.agent_size / 2)
+        left, right, _, _ = self.get_range(self.agent_size, self.agent_size)
 
         covered = self.field[(self.state[1]-left):(self.state[1]+right+1),
                              (self.state[0]-left):(self.state[0]+right+1)]
 
         hitted_berries_size = []
+        hitted_berries_id = set()
 
-        # TODO: Fill the hitted_berries_list with the sizes of the hitted berries sizes and return it
-        # TODO: Remove the hitted berries from the field
+        berry_ids_y = self.interval_tree_y.find_intervals(self.state[1] - left)
+        for p in range(self.state[0] - left, self.state[0] + right + 1):
+            berry_ids_x = self.interval_tree_x.find_intervals(p)
+            hitted_berries_id.update(berry_ids_x & berry_ids_y)
+
+        berry_ids_y = self.interval_tree_y.find_intervals(self.state[1] + right)
+        for p in range(self.state[0] - left, self.state[0] + right + 1):
+            berry_ids_x = self.interval_tree_x.find_intervals(p)
+            hitted_berries_id.update(berry_ids_x & berry_ids_y)
+
+        berry_ids_x = self.interval_tree_x.find_intervals(self.state[0] - left)
+        for p in range(self.state[1] - left + 1, self.state[1] + right):
+            berry_ids_y = self.interval_tree_y.find_intervals(p)
+            hitted_berries_id.update(berry_ids_x & berry_ids_y)
+
+        berry_ids_x = self.interval_tree_x.find_intervals(self.state[0] + right)
+        for p in range(self.state[1] - left + 1, self.state[1] + right):
+            berry_ids_y = self.interval_tree_y.find_intervals(p)
+            hitted_berries_id.update(berry_ids_x & berry_ids_y)
+
+        print(hitted_berries_id)
+
+        for berry_id in hitted_berries_id:
+            if self.berry_info[berry_id, 0] == 1:
+                self.remove_berry(berry_id)
+                hitted_berries_size.append(self.berry_info[1])
+
+        return hitted_berries_size
 
     def get_observation(self):
-        pass
+        left, right, up, down = self.get_range(self.observation_space[0], self.observation_space[1])
+
+        if self.state[0] < left:
+            right = right + left - self.state[0]
+            left = self.state[0]
+        if self.state[1] < up:
+            down = down + up - self.state[1]
+            up = self.state[1]
+        if self.observation_space[0] - self.state[0] - 1 < right:
+            left = left + right - self.observation_space[0] + self.state[0] + 1
+            right = self.observation_space[0] - self.state[0] - 1
+        if self.observation_space[1] - self.state[1] - 1 < down:
+            up = up + down - self.observation_space[1] + self.state[1] + 1
+            down = self.observation_space[1] - self.state[1] - 1
+
+        return self.field[(self.state[1] - up):(self.state[1] + down + 1),
+                          (self.state[0] - left):(self.state[0] + right + 1)]
 
     def step(self, action):
         self.num_steps += 1
@@ -121,16 +192,40 @@ class BerryFieldEnv(gym.Env):
         self.state[0] += move[0]
         self.state[1] += move[1]
 
-        hitted_berries_size = get_hitted_berries_size()
+        hitted_berries_size = self.get_hitted_berries_size()
 
         for hitted_berry_size in hitted_berries_size:
             if hitted_berry_size != 0:
-                reward += reward_rate*hitted_berry_size
+                reward += self.reward_rate*hitted_berry_size
 
-        return get_observation(), reward, done, {}
+        return self.get_observation(), reward, done, {}
 
     def reset(self):
         pass
 
     def render(self, mode='human'):
-        pass
+        view = self.get_observation()
+
+        print(np.sum(view))
+
+        layer1 = (view > 0).astype('uint8') * 255
+        layer2 = (view == 0).astype('uint8') * 255
+        layer3 = np.zeros((self.observation_space[1], self.observation_space[0]), dtype='uint8')
+
+        image = np.dstack((layer1, layer2, layer3))
+
+        left, right, _, _ = self.get_range(self.agent_size, self.agent_size)
+        left_w, right_w, up_w, down_w = self.get_range(self.observation_space[0], self.observation_space[1])
+
+        image[(up_w - left):(up_w + right + 1),
+              (left_w - left):(left_w + right + 1),
+              :] = 0
+
+        # plt.imshow(image)
+        # plt.show()
+
+        if self.window is None:
+            self.window = Viewer(self.observation_space[0], self.observation_space[1], 'Display Window', resizable=True)
+
+        self.window.draw_image(image)
+        pyglet.app.run()
