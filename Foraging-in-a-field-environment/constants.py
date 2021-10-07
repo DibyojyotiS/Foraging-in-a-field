@@ -17,4 +17,6 @@ max_steps = speed*time
 
 # initial_state = (18191, 9608)  # Center of 7th patch in the sheet
 # initial_state = (9720, 10380)
-initial_state = (10000, 9950)
+# initial_state = (9000, 11500)
+initial_state = (10000,9950)
+

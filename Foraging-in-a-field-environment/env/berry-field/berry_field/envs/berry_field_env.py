@@ -117,6 +117,7 @@ class BerryFieldEnv(gym.Env):
 
     # Removes berry from the field
     def remove_berry(self, berry_id):
+        print('remove')
         self.berry_info[berry_id, 0] = 0
 
         berry_info = self.berry_info[berry_id]
@@ -156,7 +157,7 @@ class BerryFieldEnv(gym.Env):
             berry_ids_y = self.interval_tree_y.find_intervals(p)
             hitted_berries_id.update(berry_ids_x & berry_ids_y)
 
-        print(hitted_berries_id)
+        #print(hitted_berries_id)
 
         for berry_id in hitted_berries_id:
             if self.berry_info[berry_id, 0] == 1:
@@ -217,8 +218,8 @@ class BerryFieldEnv(gym.Env):
         if self.display is None:
             # self.display = Viewer(self.observation_space[0], self.observation_space[1], 'Display Window', resizable=True)
             pygame.init()
-            self.image = np.zeros((1080, 1920, 3), dtype=np.uint8)
-            self.display = pygame.display.set_mode((1080, 1920))
+            self.image = np.zeros((1920, 1080, 3), dtype=np.uint8)
+            self.display = pygame.display.set_mode((1920, 1080))
 
         view = self.get_observation()
         ax, ay = self.state
@@ -228,11 +229,11 @@ class BerryFieldEnv(gym.Env):
         layer3 = np.zeros_like(layer2, dtype=np.uint8)
         img = np.dstack((layer1, layer2, layer3))
 
-        self.image[:][:][:] = img
+        self.image[:][:][:] = np.transpose(img, [1,0,2])
 
         left, right, _, _ = self.get_range(self.agent_size, self.agent_size)
         left_w, right_w, up_w, down_w = self.get_range(self.observation_space[0], self.observation_space[1])
-        self.image[(up_w - left):(up_w + right + 1), (left_w - left):(left_w + right + 1), :] = 255
+        self.image[(left_w - left):(left_w + right + 1), (up_w - left):(up_w + right + 1), :] = 255
 
         # self.display.draw_image(self.image)
         # pyglet.app.run()
