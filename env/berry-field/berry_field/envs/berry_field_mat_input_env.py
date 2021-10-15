@@ -9,7 +9,7 @@ from .utils.collision_tree import collision_tree
 from .utils.renderingViewer import renderingViewer
 
 MAX_DISPLAY_SIZE = (16*80, 9*80) # (width, height)
-OBSHAPE = 30
+OBSHAPE = 35
 
 class BerryFieldEnv_MatInput(gym.Env):
     def __init__(self,
@@ -77,8 +77,8 @@ class BerryFieldEnv_MatInput(gym.Env):
         self.state = (  min(max(0, x), self.field_size[0]), 
                         min(max(0, y), self.field_size[1]) )
         reward = self.pick_collided_berries()  - self.drain_rate*(action != 0)
-        # observation = self.unordered_observation()
-        observation = self.ordered_observation()
+        observation = self.unordered_observation()
+        # observation = self.ordered_observation()
         self.cummulative_reward += reward
         self.observation = observation
         self.done = True if self.num_steps >= self.max_steps else False
@@ -92,10 +92,11 @@ class BerryFieldEnv_MatInput(gym.Env):
 
     def ordered_observation(self):
         """ unoredered_observation sorted clockwise """
-        agent_bbox = (*self.state, self.agent_size, self.agent_size)
         observation = np.zeros((OBSHAPE, 5))
         boxIds, boxes = self.get_Ids_and_boxes_in_view((*self.state, *self.observation_space_size))
-        agent_pos = np.array(agent_bbox[:2])
+        if len(boxIds) == 0: return observation
+
+        agent_pos = np.array(self.state)
         directions = boxes[:,:2] - agent_pos
         distances = np.sqrt(np.sum(directions**2, axis=1, keepdims=True))
         directions = directions/distances
@@ -112,6 +113,8 @@ class BerryFieldEnv_MatInput(gym.Env):
         agent_bbox = (*self.state, self.agent_size, self.agent_size)
         observation = np.zeros((OBSHAPE, 5))
         boxIds, boxes = self.get_Ids_and_boxes_in_view((*self.state, *self.observation_space_size))
+        if len(boxIds) == 0: return observation
+        
         agent_pos = np.array(agent_bbox[:2])
         directions = boxes[:,:2] - agent_pos
         distances = np.sqrt(np.sum(directions**2, axis=1, keepdims=True))
@@ -132,7 +135,7 @@ class BerryFieldEnv_MatInput(gym.Env):
 
 
     def get_Ids_and_boxes_in_view(self, bounding_box):
-        boxIds, boxes = self.berry_collision_tree.boxes_within_bound(bounding_box, True)
+        boxIds, boxes = self.berry_collision_tree.boxes_within_bound(bounding_box, return_boxes=True)
         return list(boxIds), boxes
 
 
@@ -153,6 +156,7 @@ class BerryFieldEnv_MatInput(gym.Env):
 
 
     def isClockwisehelper(self, v):
+        # partitions circle into two sub spaces
         rx,ry = (0,1) #reference vector
         x,y = v
         curl = rx*y - ry*x
@@ -165,7 +169,7 @@ class BerryFieldEnv_MatInput(gym.Env):
     def isClockwise(self,v1, v2):
         x1,y1,x2,y2=(*v1,*v2)
         curl = x1*y2 - x2*y1
-        dot = x1*x2 + y1*y2
+        # dot = x1*x2 + y1*y2
         v1_in_A = self.isClockwisehelper(v1)
         v2_in_A = self.isClockwisehelper(v2)
         if(v1_in_A == v2_in_A):
@@ -257,7 +261,7 @@ class BerryFieldEnv_MatInput(gym.Env):
             self.viewer.add_onetime(line)
 
         # draw position and total reward
-        label = pyglet.text.Label(f'x:{self.state[0]} y:{self.state[1]} \t total-reward:{self.cummulative_reward:.4f}', 
+        label = pyglet.text.Label(f'x:{self.state[0]} y:{self.state[1]} a:{self.lastaction} \t total-reward:{self.cummulative_reward:.4f}', 
                                     x=screenw*0.1, y=screenh*0.9, color=(0, 0, 0, 255))
         self.viewer.add_onetimeText(label)
 

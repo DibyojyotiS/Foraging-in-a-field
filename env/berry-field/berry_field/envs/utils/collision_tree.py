@@ -111,3 +111,7 @@ class collision_tree():
         for boxId in boxIds:
             self.intervaltreeX.delete_node(boxId)
             self.intervaltreeY.delete_node(boxId)
+
+
+    def get_box(self, boxId:int):
+        return self.boxes[boxId]
