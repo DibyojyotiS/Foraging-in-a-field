@@ -50,7 +50,7 @@ while not done:
     cummulative_rewards.append(env.cummulative_reward)
     step+=1
     env.render()
-env.viewer.close()
+if env.viewer: env.viewer.close()
 
 print(env.cummulative_reward)
 plt.plot(cummulative_rewards); plt.show()
