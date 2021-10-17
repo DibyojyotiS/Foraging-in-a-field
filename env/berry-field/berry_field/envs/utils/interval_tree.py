@@ -145,10 +145,10 @@ class IntervalTree:
                     node.parent.left = node.right
                 else:
                     node.parent.right = node.right
+                self.floatup_MinMax(node.parent)
             else:
                 self.root = node.right
-                self.root.parent = None
-            self.floatup_MinMax(node.parent)
+                if self.root is not None: self.root.parent = None
             del node, self.map_nodeId_Node[node_id]
         
         elif node.right == None:
@@ -158,17 +158,18 @@ class IntervalTree:
                     node.parent.left = node.left
                 else:
                     node.parent.right = node.left
+                self.floatup_MinMax(node.parent)
             else:
                 self.root = node.left
-            self.floatup_MinMax(node.parent)
+                self.root.parent = None
             del node, self.map_nodeId_Node[node_id]
         
         else:
             successor_node = self.leftmost_node(node.right)
             node.id = successor_node.id
             node.interval = successor_node.interval
-            successor_node.parent.left == None
-            self.floatup_MinMax(successor_node.parent)
+            self.delete_node(successor_node.id)
+            self.map_nodeId_Node[node.id] = node
             del successor_node, self.map_nodeId_Node[node_id]
 
 
