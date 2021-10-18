@@ -70,7 +70,7 @@ class collision_tree():
         return overlapIds
 
 
-    def find_collisions(self, bounding_box, iscircle=False, radius=None):
+    def find_collisions(self, bounding_box, iscircle=False, radius=None, return_boxes=False):
         """ collision detection with bounding_box [x,y,width,height] and other
             radi: float, required if iscircle = True
             iscircle: find collision with circle at center of bounding_box"""
@@ -85,6 +85,7 @@ class collision_tree():
                 circle2 = (self.boxes[Id][0], self.boxes[Id][1], self.radii[Id])
                 collision = self.circle_circle_collisions(AgentCircle, circle2)
                 if not collision: overlapIds.remove(Id)
+            if return_boxes: return overlapIds, self.boxes[list(overlapIds)]
             return overlapIds
         
         # circle berry rect agent
@@ -93,6 +94,7 @@ class collision_tree():
                 circle = (self.boxes[Id][0], self.boxes[Id][1], self.radii[Id])
                 collision = self.circle_rectangle_collisions(circle, bounding_box)
                 if not collision: overlapIds.remove(Id)
+            if return_boxes: return overlapIds, self.boxes[list(overlapIds)]
             return overlapIds
 
         # rect berry circle agent
@@ -102,8 +104,10 @@ class collision_tree():
                 berry_box = self.boxes[Id]
                 collision = self.circle_rectangle_collisions(AgentCircle, berry_box)
                 if not collision: overlapIds.remove(Id)
+            if return_boxes: return overlapIds, self.boxes[list(overlapIds)]
             return overlapIds 
 
+        if return_boxes: return overlapIds, self.boxes[list(overlapIds)]
         return overlapIds
 
 

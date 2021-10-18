@@ -2,6 +2,7 @@ from functools import cmp_to_key
 
 import gym
 import numpy as np
+import copy
 import pyglet
 from gym.envs.classic_control import rendering
 
@@ -28,24 +29,25 @@ class BerryFieldEnv_MatInput(gym.Env):
             raise Exception("file_paths should be a list of length 2")
 
         # Initializing variables
+        self.FIELD_SIZE = field_size
+        self.AGENT_SIZE = agent_size
+        self.INITIAL_STATE = initial_state
+        self.DRAIN_RATE = drain_rate
+        self.REWARD_RATE = reward_rate
+        self.MAX_STEPS = max_steps
+        self.OBSERVATION_SPACE_SIZE = observation_space_size
+        self.CIRCULAR_BERRIES = circular_berries
+        self.CIRCULAR_AGENT = circular_agent
+        self.OBSERVATION_TYPE = observation_type
+
         self.done = False
-        self.field_size = field_size
-        self.agent_size = agent_size
-        self.initialstate = initial_state
         self.state = initial_state
-        self.drain_rate = drain_rate
-        self.reward_rate = reward_rate
-        self.max_steps = max_steps
         self.num_steps = 0
         self.action_space = gym.spaces.Discrete(9)
 
-        self.observation_space_size = observation_space_size
-        self.circular_berries = circular_berries
-        self.circular_agent = circular_agent
         self.viewer = None
 
         self.cummulative_reward = 0.5
-        self.observation_type = observation_type
         self.observation = None
         self.lastaction = 0
 
@@ -63,9 +65,22 @@ class BerryFieldEnv_MatInput(gym.Env):
 
         berry_data = self.read_csv(file_paths)
         bounding_boxes, boxIds = self.create_bounding_boxes_and_Ids(berry_data)
-        self.berry_radii = berry_data[:,0]/2
-        self.bounding_boxes = bounding_boxes # [x,y,width,height]
-        self.berry_collision_tree = collision_tree(bounding_boxes, boxIds, self.circular_berries, self.berry_radii)
+        self.berry_radii = berry_data[:,0]/2 # [x,y,width,height]
+        self.BERRY_COLLISION_TREE = collision_tree(bounding_boxes, boxIds, self.CIRCULAR_BERRIES, self.berry_radii)
+        self.berry_collision_tree = copy.deepcopy(self.BERRY_COLLISION_TREE)
+
+
+    def reset(self):
+        if self.viewer: self.viewer.close()
+        self.done = False
+        self.state = self.INITIAL_STATE
+        self.num_steps = 0
+        self.viewer = None
+        self.cummulative_reward = 0.5
+        self.observation = None
+        self.lastaction = 0
+        self.berry_collision_tree = copy.deepcopy(self.BERRY_COLLISION_TREE)
+        return
 
 
     def step(self, action):
@@ -74,14 +89,14 @@ class BerryFieldEnv_MatInput(gym.Env):
         movement = self.action_switcher[action]
         x = self.state[0] + movement[0]
         y = self.state[1] + movement[1]
-        self.state = (  min(max(0, x), self.field_size[0]), 
-                        min(max(0, y), self.field_size[1]) )
-        reward = self.pick_collided_berries()  - self.drain_rate*(action != 0)
+        self.state = (  min(max(0, x), self.FIELD_SIZE[0]), 
+                        min(max(0, y), self.FIELD_SIZE[1]) )
+        reward = self.pick_collided_berries()  - self.DRAIN_RATE*(action != 0)
         observation = self.unordered_observation()
         # observation = self.ordered_observation()
         self.cummulative_reward += reward
         self.observation = observation
-        self.done = True if self.num_steps >= self.max_steps else False
+        self.done = True if self.num_steps >= self.MAX_STEPS else False
         if self.done and self.viewer is not None: self.viewer = self.viewer.close()
         return observation, reward, self.done, {}
 
@@ -93,7 +108,7 @@ class BerryFieldEnv_MatInput(gym.Env):
     def ordered_observation(self):
         """ unoredered_observation sorted clockwise """
         observation = np.zeros((OBSHAPE, 5))
-        boxIds, boxes = self.get_Ids_and_boxes_in_view((*self.state, *self.observation_space_size))
+        boxIds, boxes = self.get_Ids_and_boxes_in_view((*self.state, *self.OBSERVATION_SPACE_SIZE))
         if len(boxIds) == 0: return observation
 
         agent_pos = np.array(self.state)
@@ -110,9 +125,9 @@ class BerryFieldEnv_MatInput(gym.Env):
         """ all visible berries are collated as colstack[isBerry, direction, distance, size]
             in the order they had been detected
             returns np array of shape (OBSHAPE,5) """
-        agent_bbox = (*self.state, self.agent_size, self.agent_size)
+        agent_bbox = (*self.state, self.AGENT_SIZE, self.AGENT_SIZE)
         observation = np.zeros((OBSHAPE, 5))
-        boxIds, boxes = self.get_Ids_and_boxes_in_view((*self.state, *self.observation_space_size))
+        boxIds, boxes = self.get_Ids_and_boxes_in_view((*self.state, *self.OBSERVATION_SPACE_SIZE))
         if len(boxIds) == 0: return observation
         
         agent_pos = np.array(agent_bbox[:2])
@@ -125,11 +140,11 @@ class BerryFieldEnv_MatInput(gym.Env):
 
     
     def pick_collided_berries(self):
-        agent_bbox = (*self.state, self.agent_size, self.agent_size)
-        boxIds = self.berry_collision_tree.find_collisions(agent_bbox, 
-                                            self.circular_agent, self.agent_size/2)
-        sizes = self.berry_radii[list(boxIds)]*2
-        reward = self.reward_rate * np.sum(sizes)
+        agent_bbox = (*self.state, self.AGENT_SIZE, self.AGENT_SIZE)
+        boxIds, boxes = self.berry_collision_tree.find_collisions(agent_bbox, 
+                                            self.CIRCULAR_AGENT, self.AGENT_SIZE/2, return_boxes=True)
+        sizes = boxes[:,2] # boxes are an array with rows as [x,y, size, size]
+        reward = self.REWARD_RATE * np.sum(sizes)
         self.berry_collision_tree.delete_boxes(list(boxIds))
         return reward
 
@@ -194,9 +209,9 @@ class BerryFieldEnv_MatInput(gym.Env):
             return
         
         # berries in view
-        screenw, screenh = self.observation_space_size
+        screenw, screenh = self.OBSERVATION_SPACE_SIZE
         bounding_box = (*self.state, screenw, screenh)
-        agent_bbox = (screenw/2, screenh/2, self.agent_size, self.agent_size)
+        agent_bbox = (screenw/2, screenh/2, self.AGENT_SIZE, self.AGENT_SIZE)
         boxIds, boxes = self.get_Ids_and_boxes_in_view(bounding_box)
         boxes[:,0] -= self.state[0]-screenw/2; boxes[:,1] -= self.state[1]-screenh/2 
             
@@ -207,7 +222,7 @@ class BerryFieldEnv_MatInput(gym.Env):
         self.viewer.transform.scale = (scale, scale)
 
         # draw berries
-        if self.circular_berries:
+        if self.CIRCULAR_BERRIES:
             for center, radius in zip(boxes[:,:2], self.berry_radii[boxIds]):
                 circle = rendering.make_circle(radius)
                 circletrans = rendering.Transform(translation=center)
@@ -225,10 +240,10 @@ class BerryFieldEnv_MatInput(gym.Env):
                 self.viewer.add_onetime(box)
         
         # draw agent
-        if self.circular_agent:
-            agent = rendering.make_circle(self.agent_size/2)
+        if self.CIRCULAR_AGENT:
+            agent = rendering.make_circle(self.AGENT_SIZE/2)
         else:
-            p = self.agent_size/2
+            p = self.AGENT_SIZE/2
             agentvertices =((-p,-p),(-p,p),(p,p),(p,-p))
             agent = rendering.FilledPolygon(agentvertices)
         agenttrans = rendering.Transform(translation=agent_bbox[:2])
@@ -238,9 +253,9 @@ class BerryFieldEnv_MatInput(gym.Env):
 
         # draw boundary wall 
         l = bounding_box[0] - bounding_box[2]/2
-        r = bounding_box[0] + bounding_box[2]/2 - self.field_size[0]
+        r = bounding_box[0] + bounding_box[2]/2 - self.FIELD_SIZE[0]
         b = bounding_box[1] - bounding_box[3]/2
-        t = bounding_box[1] + bounding_box[3]/2 - self.field_size[1]
+        t = bounding_box[1] + bounding_box[3]/2 - self.FIELD_SIZE[1]
         top = bounding_box[3] - t
         right = bounding_box[2] - r
         if l<=0:

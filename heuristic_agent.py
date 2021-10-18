@@ -39,11 +39,10 @@ def heuristicpolicy(obs, distance_discount=0.8):
 
 
 env = get_env.get_env()
-obs, r, done, info = env.step(0)
-done = False
-
-cummulative_rewards = []
 step = 0
+cummulative_rewards = []
+done = False
+obs, r, done, info = env.step(0)
 while not done:
     a = heuristicpolicy(obs)
     obs, r, done, info = env.step(a)
@@ -51,6 +50,6 @@ while not done:
     step+=1
     env.render()
 if env.viewer: env.viewer.close()
-
 print(env.cummulative_reward)
-plt.plot(cummulative_rewards); plt.show()
+plt.plot(cummulative_rewards) 
+plt.show()
