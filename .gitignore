@@ -1,0 +1,4 @@
+__pycache__
+.idea
+.vscode
+env/berry-field/berry_field.egg-info
