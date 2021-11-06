@@ -20,7 +20,7 @@ class BerryFieldEnv_MatInput(gym.Env):
                  drain_rate, reward_rate,
                  max_steps,
                  initial_state, circular_berries=True, circular_agent=True,
-                 observation_type = "segmented"):
+                 observation_type = "unordered"):
 
         super(BerryFieldEnv_MatInput, self).__init__()
 
@@ -77,32 +77,51 @@ class BerryFieldEnv_MatInput(gym.Env):
         self.num_steps = 0
         self.viewer = None
         self.cummulative_reward = 0.5
-        self.observation = None
+        self.observation = self.get_observation()
         self.lastaction = 0
         self.berry_collision_tree = copy.deepcopy(self.BERRY_COLLISION_TREE)
-        return
+        return self.observation
 
 
     def step(self, action):
         self.num_steps+=1
-        self.lastaction = action
+        self.lastaction = action 
+        
         movement = self.action_switcher[action]
         x = self.state[0] + movement[0]
         y = self.state[1] + movement[1]
         self.state = (  min(max(0, x), self.FIELD_SIZE[0]), 
                         min(max(0, y), self.FIELD_SIZE[1]) )
+
         reward = self.pick_collided_berries()  - self.DRAIN_RATE*(action != 0)
-        observation = self.unordered_observation()
-        # observation = self.ordered_observation()
+        observation = self.get_observation()
         self.cummulative_reward += reward
         self.observation = observation
         self.done = True if self.num_steps >= self.MAX_STEPS else False
+
+        x,y = self.state
+        w,h = self.OBSERVATION_SPACE_SIZE
+        W,H = self.FIELD_SIZE
+        info = {
+            'relative_coordinates': [self.state[0] - self.INITIAL_STATE[0], self.state[1] - self.INITIAL_STATE[1]],
+            'dist_from_edge':[
+                w//2 - max(0, w//2 - x), # distance from left edge; w//2 if not in view
+                w//2 - max(0, x+w//2 - W), # distance from right edge; w//2 if not in view
+                h//2 - max(0, y+h//2 - H), # distance from the top edge; h//2 if not in view
+                h//2 - max(0, h//2 - y) # distance from the bottom edge; h//2 if not in view
+            ]
+        }
+
         if self.done and self.viewer is not None: self.viewer = self.viewer.close()
-        return observation, reward, self.done, {}
+        return observation, reward, self.done, info
 
-
-    def segmented_observation(self):
-        pass
+    
+    def get_observation(self):
+        if self.OBSERVATION_TYPE == "ordered":
+            observation = self.ordered_observation()
+        else:
+            observation = self.unordered_observation()
+        return observation
 
 
     def ordered_observation(self):
@@ -210,9 +229,9 @@ class BerryFieldEnv_MatInput(gym.Env):
         
         # berries in view
         screenw, screenh = self.OBSERVATION_SPACE_SIZE
-        bounding_box = (*self.state, screenw, screenh)
+        observation_bounding_box = (*self.state, screenw, screenh)
         agent_bbox = (screenw/2, screenh/2, self.AGENT_SIZE, self.AGENT_SIZE)
-        boxIds, boxes = self.get_Ids_and_boxes_in_view(bounding_box)
+        boxIds, boxes = self.get_Ids_and_boxes_in_view(observation_bounding_box)
         boxes[:,0] -= self.state[0]-screenw/2; boxes[:,1] -= self.state[1]-screenh/2 
             
         # adjust for my screen size
@@ -252,26 +271,26 @@ class BerryFieldEnv_MatInput(gym.Env):
         self.viewer.add_onetime(agent)
 
         # draw boundary wall 
-        l = bounding_box[0] - bounding_box[2]/2
-        r = bounding_box[0] + bounding_box[2]/2 - self.FIELD_SIZE[0]
-        b = bounding_box[1] - bounding_box[3]/2
-        t = bounding_box[1] + bounding_box[3]/2 - self.FIELD_SIZE[1]
-        top = bounding_box[3] - t
-        right = bounding_box[2] - r
+        l = observation_bounding_box[0] - observation_bounding_box[2]/2
+        r = observation_bounding_box[0] + observation_bounding_box[2]/2 - self.FIELD_SIZE[0]
+        b = observation_bounding_box[1] - observation_bounding_box[3]/2
+        t = observation_bounding_box[1] + observation_bounding_box[3]/2 - self.FIELD_SIZE[1]
+        top = observation_bounding_box[3] - t
+        right = observation_bounding_box[2] - r
         if l<=0:
-            line = rendering.Line(start=(-l, max(0, -b)), end=(-l,min(bounding_box[2], top)))
+            line = rendering.Line(start=(-l, max(0, -b)), end=(-l,min(observation_bounding_box[2], top)))
             line.set_color(0,0,255)
             self.viewer.add_onetime(line)
         if r>=0:
-            line = rendering.Line(start=(right, max(0, -b)), end=(right,min(bounding_box[2], top)))
+            line = rendering.Line(start=(right, max(0, -b)), end=(right,min(observation_bounding_box[2], top)))
             line.set_color(0,0,255)
             self.viewer.add_onetime(line)
         if b<=0:
-            line = rendering.Line(start=(max(0,-l), -b), end=(min(bounding_box[2], right),-b))
+            line = rendering.Line(start=(max(0,-l), -b), end=(min(observation_bounding_box[2], right),-b))
             line.set_color(0,0,255)
             self.viewer.add_onetime(line)
         if t>=0:
-            line = rendering.Line(start=(max(0,-l), top), end=(min(bounding_box[1], right),top))
+            line = rendering.Line(start=(max(0,-l), top), end=(min(observation_bounding_box[1], right),top))
             line.set_color(0,0,255)
             self.viewer.add_onetime(line)
 

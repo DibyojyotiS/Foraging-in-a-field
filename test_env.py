@@ -2,7 +2,7 @@ import numpy as np
 import get_env
 
 env = get_env.get_env()
-bounding_boxes = env.bounding_boxes
+bounding_boxes = env.berry_collision_tree.boxes
 berry_collision_tree = env.berry_collision_tree
 
 print("check positions of berries")
