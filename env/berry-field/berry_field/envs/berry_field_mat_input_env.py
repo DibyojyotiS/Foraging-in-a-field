@@ -10,7 +10,6 @@ from .utils.collision_tree import collision_tree
 from .utils.renderingViewer import renderingViewer
 
 MAX_DISPLAY_SIZE = (16*80, 9*80) # (width, height)
-OBSHAPE = 35
 
 class BerryFieldEnv_MatInput(gym.Env):
     def __init__(self,
@@ -20,9 +19,11 @@ class BerryFieldEnv_MatInput(gym.Env):
                  drain_rate, reward_rate,
                  max_steps,
                  initial_state, circular_berries=True, circular_agent=True,
-                 observation_type = "segmented"):
+                 observation_type = "unordered"):
 
         super(BerryFieldEnv_MatInput, self).__init__()
+
+        assert observation_type in ["unordered", "ordered", "buckets"]
 
         # Checking for the correct format of the file_path argument
         if len(file_paths) != 2:
@@ -39,6 +40,9 @@ class BerryFieldEnv_MatInput(gym.Env):
         self.CIRCULAR_BERRIES = circular_berries
         self.CIRCULAR_AGENT = circular_agent
         self.OBSERVATION_TYPE = observation_type
+
+        self.sectors = [((x-22.5)%360, x+22.5) for x in range(0,360,45)] # for observatiof bucket type
+        self.OBSHAPE = 35 if observation_type != "buckets" else len(self.sectors)
 
         self.done = False
         self.state = initial_state
@@ -77,37 +81,58 @@ class BerryFieldEnv_MatInput(gym.Env):
         self.num_steps = 0
         self.viewer = None
         self.cummulative_reward = 0.5
-        self.observation = None
+        self.observation = self.get_observation()
         self.lastaction = 0
         self.berry_collision_tree = copy.deepcopy(self.BERRY_COLLISION_TREE)
-        return
+        return self.observation, False
 
 
     def step(self, action):
         self.num_steps+=1
-        self.lastaction = action
+        self.lastaction = action 
+        
         movement = self.action_switcher[action]
         x = self.state[0] + movement[0]
         y = self.state[1] + movement[1]
         self.state = (  min(max(0, x), self.FIELD_SIZE[0]), 
                         min(max(0, y), self.FIELD_SIZE[1]) )
+
         reward = self.pick_collided_berries()  - self.DRAIN_RATE*(action != 0)
-        observation = self.unordered_observation()
-        # observation = self.ordered_observation()
+        observation = self.get_observation()
         self.cummulative_reward += reward
         self.observation = observation
         self.done = True if self.num_steps >= self.MAX_STEPS else False
+
+        x,y = self.state
+        w,h = self.OBSERVATION_SPACE_SIZE
+        W,H = self.FIELD_SIZE
+        info = {
+            'relative_coordinates': [self.state[0] - self.INITIAL_STATE[0], self.state[1] - self.INITIAL_STATE[1]],
+            'dist_from_edge':[
+                w//2 - max(0, w//2 - x), # distance from left edge; w//2 if not in view
+                w//2 - max(0, x+w//2 - W), # distance from right edge; w//2 if not in view
+                h//2 - max(0, y+h//2 - H), # distance from the top edge; h//2 if not in view
+                h//2 - max(0, h//2 - y) # distance from the bottom edge; h//2 if not in view
+            ]
+        }
+
         if self.done and self.viewer is not None: self.viewer = self.viewer.close()
-        return observation, reward, self.done, {}
+        return observation, reward, self.done, info
 
-
-    def segmented_observation(self):
-        pass
+    
+    def get_observation(self):
+        if self.OBSERVATION_TYPE == "ordered":
+            observation = self.ordered_observation()
+        elif self.OBSERVATION_TYPE ==  "unordered":
+            observation = self.unordered_observation()
+        else:
+            observation = self.bucket_obseration()
+        return observation
 
 
     def ordered_observation(self):
         """ unoredered_observation sorted clockwise """
-        observation = np.zeros((OBSHAPE, 5))
+        observation = np.zeros((self.OBSHAPE, 5))
         boxIds, boxes = self.get_Ids_and_boxes_in_view((*self.state, *self.OBSERVATION_SPACE_SIZE))
         if len(boxIds) == 0: return observation
 
@@ -126,7 +151,7 @@ class BerryFieldEnv_MatInput(gym.Env):
             in the order they had been detected
             returns np array of shape (OBSHAPE,5) """
         agent_bbox = (*self.state, self.AGENT_SIZE, self.AGENT_SIZE)
-        observation = np.zeros((OBSHAPE, 5))
+        observation = np.zeros((self.OBSHAPE, 5))
         boxIds, boxes = self.get_Ids_and_boxes_in_view((*self.state, *self.OBSERVATION_SPACE_SIZE))
         if len(boxIds) == 0: return observation
         
@@ -138,6 +163,35 @@ class BerryFieldEnv_MatInput(gym.Env):
         observation[:data.shape[0],:] = data
         return observation
 
+
+    def bucket_obseration(self):
+        """ berries averaged into buckets representing directions
+            returns np array of shape (self.OBSHAPE, 2)
+            1st column: num of sizes of beries in a bucket
+            2nd column: average distance to berries in a bucket """
+        observation = np.zeros((self.OBSHAPE, 2))
+        obs = self.unordered_observation()
+        berries = np.argwhere(np.isclose(obs[:,0], 1))[:,0]
+
+        if berries.shape[0]==0: return observation
+        obs = obs[berries]
+        directions, distances, sizes = obs[:,1:3], obs[:,3], obs[:,4]
+        angles = self.getTrueAngles(directions, [0,1])
+
+        for i, sector in enumerate(self.sectors):
+            if sector[0] < sector[1]:
+                args = np.argwhere((angles>=sector[0])&(angles<=sector[1]))
+            else:
+                args = np.argwhere((angles>=sector[0])|(angles<=sector[1]))
+            args = np.squeeze(args)
+            # juicediscount = np.power(distance_discount, distances[args])
+            # discounted_juice = np.dot(sizes[args], juicediscount)
+            # observation[i,0] = discounted_juice
+            observation[i,0] = np.mean(sizes[args])    
+            observation[i,1] = np.mean(distances[args])      
+
+        return observation  
+        
     
     def pick_collided_berries(self):
         agent_bbox = (*self.state, self.AGENT_SIZE, self.AGENT_SIZE)
@@ -195,6 +249,15 @@ class BerryFieldEnv_MatInput(gym.Env):
         return 1
 
 
+    def getTrueAngles(directions, referenceVector=[0,1]):
+        curls = np.cross(directions, referenceVector)
+        dot = np.dot(directions, referenceVector)
+        angles = np.arccos(dot)*180/np.pi
+        args0 = np.argwhere(np.bitwise_not((curls > 0)|(curls == 0)&(dot==1)))
+        angles[args0] = 360-angles[args0]
+        return angles
+
+
     def read_csv(self, file_paths):
         # Constructing numpy arrays to store the coordinates of berries and patches
         berry_data = np.loadtxt(file_paths[0], delimiter=',') #[patch#, size, x,y]
@@ -210,9 +273,9 @@ class BerryFieldEnv_MatInput(gym.Env):
         
         # berries in view
         screenw, screenh = self.OBSERVATION_SPACE_SIZE
-        bounding_box = (*self.state, screenw, screenh)
+        observation_bounding_box = (*self.state, screenw, screenh)
         agent_bbox = (screenw/2, screenh/2, self.AGENT_SIZE, self.AGENT_SIZE)
-        boxIds, boxes = self.get_Ids_and_boxes_in_view(bounding_box)
+        boxIds, boxes = self.get_Ids_and_boxes_in_view(observation_bounding_box)
         boxes[:,0] -= self.state[0]-screenw/2; boxes[:,1] -= self.state[1]-screenh/2 
             
         # adjust for my screen size
@@ -252,26 +315,26 @@ class BerryFieldEnv_MatInput(gym.Env):
         self.viewer.add_onetime(agent)
 
         # draw boundary wall 
-        l = bounding_box[0] - bounding_box[2]/2
-        r = bounding_box[0] + bounding_box[2]/2 - self.FIELD_SIZE[0]
-        b = bounding_box[1] - bounding_box[3]/2
-        t = bounding_box[1] + bounding_box[3]/2 - self.FIELD_SIZE[1]
-        top = bounding_box[3] - t
-        right = bounding_box[2] - r
+        l = observation_bounding_box[0] - observation_bounding_box[2]/2
+        r = observation_bounding_box[0] + observation_bounding_box[2]/2 - self.FIELD_SIZE[0]
+        b = observation_bounding_box[1] - observation_bounding_box[3]/2
+        t = observation_bounding_box[1] + observation_bounding_box[3]/2 - self.FIELD_SIZE[1]
+        top = observation_bounding_box[3] - t
+        right = observation_bounding_box[2] - r
         if l<=0:
-            line = rendering.Line(start=(-l, max(0, -b)), end=(-l,min(bounding_box[2], top)))
+            line = rendering.Line(start=(-l, max(0, -b)), end=(-l,min(observation_bounding_box[2], top)))
             line.set_color(0,0,255)
             self.viewer.add_onetime(line)
         if r>=0:
-            line = rendering.Line(start=(right, max(0, -b)), end=(right,min(bounding_box[2], top)))
+            line = rendering.Line(start=(right, max(0, -b)), end=(right,min(observation_bounding_box[2], top)))
             line.set_color(0,0,255)
             self.viewer.add_onetime(line)
         if b<=0:
-            line = rendering.Line(start=(max(0,-l), -b), end=(min(bounding_box[2], right),-b))
+            line = rendering.Line(start=(max(0,-l), -b), end=(min(observation_bounding_box[2], right),-b))
             line.set_color(0,0,255)
             self.viewer.add_onetime(line)
         if t>=0:
-            line = rendering.Line(start=(max(0,-l), top), end=(min(bounding_box[1], right),top))
+            line = rendering.Line(start=(max(0,-l), top), end=(min(observation_bounding_box[1], right),top))
             line.set_color(0,0,255)
             self.viewer.add_onetime(line)
 

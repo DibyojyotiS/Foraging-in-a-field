@@ -1,5 +1,4 @@
 import gym
-
 from constants import *
 
 
@@ -24,6 +23,7 @@ def get_env():
                    observation_space_size=observation_space_size,
                    drain_rate=drain_rate, reward_rate=reward_rate,
                    max_steps=max_steps,
-                   initial_state=initial_state)
+                   initial_state=initial_state,
+                   observation_type = observation_type)
 
     return env
