@@ -223,7 +223,7 @@ def optimize_model():
         param.grad.data.clamp_(-1, 1)
     optimizer.step()
 
-num_episodes = 10
+num_episodes = 1000
 for i_episode in range(num_episodes):
     # Initialize the environment and state
     
@@ -234,7 +234,8 @@ for i_episode in range(num_episodes):
     
     for t in count():
         # Select and perform an action
-        print("Episode {} step {}".format(i_episode,t))
+        
+        #print("Episode {} step {}".format(i_episode,t))
         if i_episode<=1:
             action = torch.tensor(heuristicpolicy(env.unordered_observation()),device=device)
         else:
@@ -242,7 +243,7 @@ for i_episode in range(num_episodes):
         #print(action)
         next_state, reward, done, _ = env.step(action)
         bestBerry = np.min(next_state[:,3])
-        reward += np.exp(-0.1*bestBerry)
+        reward += np.exp(-0.01*bestBerry)
         env.render()
         next_state = next_state.flatten()
         next_state = torch.from_numpy(next_state)
