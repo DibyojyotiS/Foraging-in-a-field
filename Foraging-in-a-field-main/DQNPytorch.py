@@ -98,9 +98,9 @@ def select_action(state):
             # found, so we pick action with the larger expected reward.
             #print(policy_net(state).max().item())
             #print(policy_net(state))
-            return policy_net(state).argmax()
+            return policy_net(state).argmax(), 1
     else:
-        return torch.tensor(np.random.randint(9,size=1)[0])
+        return torch.tensor(np.random.randint(9,size=1)[0]), 20
 
 
 episode_durations = []
@@ -125,7 +125,7 @@ def plot_durations():
         display.clear_output(wait=True)
         display.display(plt.gcf())
 
-def optimize_model():
+def optimize_model(t):
     if len(memory) < BATCH_SIZE:
         return
     transitions = memory.sample(BATCH_SIZE)
@@ -143,7 +143,7 @@ def optimize_model():
     state_batch = torch.stack(batch.state)
     action_batch = torch.stack(batch.action)
     reward_batch = torch.stack(batch.reward)
-
+    action_batch = action_batch.type(torch.int64)
     # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
     # columns of actions taken. These are the actions which would've been taken
     # for each batch state according to policy_net
@@ -171,7 +171,7 @@ def optimize_model():
         param.grad.data.clamp_(-1, 1)
     optimizer.step()
 
-num_episodes = 50
+num_episodes = 10
 for i_episode in range(num_episodes):
     # Initialize the environment and state
     
@@ -179,12 +179,19 @@ for i_episode in range(num_episodes):
     state = state.flatten()
     state = torch.from_numpy(state)
     #state = state.double()
-    
+    k = 0
+    action = 0
     for t in count():
-        # Select and perform an action
-        action = select_action(state)
-        #print(action)
+        # Select and perform an action 
+        if(not k):
+            action, k = select_action(state)
+        k = k - 1  
+
+        #if(k==2): print(f'action={action}')
+        #if(t%1000 == 0):
         next_state, reward, done, _ = env.step(action)
+        bestBerry = np.min(next_state[:,3])
+        reward += np.exp(-0.1*bestBerry)
         next_state = next_state.flatten()
         next_state = torch.from_numpy(next_state)
         #next_state = next_state.double()
@@ -197,12 +204,15 @@ for i_episode in range(num_episodes):
         state = next_state
 
         # Perform one step of the optimization (on the policy network)
-        optimize_model()
+        optimize_model(t)
         if done:
             episode_durations.append(t + 1)
             plot_durations()
             break
+            
+        env.render()
     print("Episode {} done".format(i_episode))
+    print(f'cumulative reward = {env.cummulative_reward}')
     # Update the target network, copying all weights and biases in DQN
     if i_episode % TARGET_UPDATE == 0:
         target_net.load_state_dict(policy_net.state_dict())
