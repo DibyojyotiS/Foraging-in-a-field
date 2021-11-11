@@ -15,7 +15,7 @@ def get_original_env():
 
     return env
 
-def get_env():
+def get_env(observation_type = "ordered"):
     env = gym.make('berry_field:berry_field_mat_input-v0',
                    file_paths=file_paths,
                    num_berries=num_berries, num_patches=num_patches,

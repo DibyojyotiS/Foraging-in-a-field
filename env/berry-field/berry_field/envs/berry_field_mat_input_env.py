@@ -42,7 +42,8 @@ class BerryFieldEnv_MatInput(gym.Env):
         self.OBSERVATION_TYPE = observation_type
 
         self.sectors = [((x-22.5)%360, x+22.5) for x in range(0,360,45)] # for observatiof bucket type
-        self.OBSHAPE = 35 if observation_type != "buckets" else len(self.sectors)
+        self.OBSHAPE = 35 
+        self.NUMBUCKETS = len(self.sectors) # for 'buckets' type observation
 
         self.done = False
         self.state = initial_state
@@ -169,7 +170,7 @@ class BerryFieldEnv_MatInput(gym.Env):
             returns np array of shape (self.OBSHAPE, 2)
             1st column: num of sizes of beries in a bucket
             2nd column: average distance to berries in a bucket """
-        observation = np.zeros((self.OBSHAPE, 2))
+        observation = np.zeros((self.NUMBUCKETS, 2))
         obs = self.unordered_observation()
         berries = np.argwhere(np.isclose(obs[:,0], 1))[:,0]
 
@@ -183,6 +184,10 @@ class BerryFieldEnv_MatInput(gym.Env):
                 args = np.argwhere((angles>=sector[0])&(angles<=sector[1]))
             else:
                 args = np.argwhere((angles>=sector[0])|(angles<=sector[1]))
+            
+            # if no berries in sector
+            if args.shape[0] == 0: continue
+
             args = np.squeeze(args)
             # juicediscount = np.power(distance_discount, distances[args])
             # discounted_juice = np.dot(sizes[args], juicediscount)
@@ -249,7 +254,7 @@ class BerryFieldEnv_MatInput(gym.Env):
         return 1
 
 
-    def getTrueAngles(directions, referenceVector=[0,1]):
+    def getTrueAngles(self, directions, referenceVector=[0,1]):
         curls = np.cross(directions, referenceVector)
         dot = np.dot(directions, referenceVector)
         angles = np.arccos(dot)*180/np.pi
