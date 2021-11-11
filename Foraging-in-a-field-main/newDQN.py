@@ -27,7 +27,7 @@ if is_ipython:
 plt.ion()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+print(device.type, device)
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward'))
 
@@ -73,7 +73,7 @@ class DQN(nn.Module):
         return x
 
 
-BATCH_SIZE = 128
+BATCH_SIZE = 256
 GAMMA = 0.999
 EPS_START = 0.1
 EPS_END = 0.01
@@ -89,6 +89,12 @@ policy_net = DQN(input_size, n_actions).to(dtype=float).to(device)
 target_net = DQN(input_size, n_actions).to(dtype=float).to(device)
 target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
+
+def load(i):
+    policy_net.load_state_dict(torch.load(f'policynet/policynet_ep{i}.pth'))
+    target_net.load_state_dict(torch.load(f'targetnet/targetnet_ep{i}.pth'))
+
+# load(1)
 
 optimizer = optim.RMSprop(policy_net.parameters())
 memory = ReplayMemory(10000)
@@ -144,13 +150,13 @@ def select_action(state):
             # found, so we pick action with the larger expected reward.
             #print(policy_net(state).max().item())
             #print(policy_net(state))
-            print(state.shape)
-            return policy_net(state).argmax()
+            #print(state.shape)
+            return policy_net(state).argmax(), 1
             #return policy_net(state).max(1)[1].view(1, 1)
     else:
         # action = heuristicpolicy(state, distance_discount=0.8)
         # return torch.tensor([[action]], device=device)
-        return torch.tensor(np.random.randint(9,size=1)[0],device = device)
+        return torch.tensor(np.random.randint(9,size=1)[0],device = device), 25
 
 
 episode_durations = []
@@ -200,7 +206,7 @@ def optimize_model():
     #print(action_batch.shape)
     action_batch = action_batch.type(torch.int64)
     #print(policy_net(state_batch).shape,action_batch.shape)
-    state_action_values = policy_net(state_batch).gather(1, action_batch.reshape(128,1))
+    state_action_values = policy_net(state_batch).gather(1, action_batch.reshape(256,1))
 
     # Compute V(s_{t+1}) for all next states.
     # Expected values of actions for non_final_next_states are computed based
@@ -210,11 +216,10 @@ def optimize_model():
     next_state_values = torch.zeros(BATCH_SIZE, device=device, dtype=float)
     next_state_values[non_final_mask] = target_net(non_final_next_states).max(1)[0].detach()
     # Compute the expected Q values
-    expected_state_action_values = (next_state_values * GAMMA) + reward_batch
-
+    expected_state_action_values = (next_state_values * GAMMA) + reward_batch.squeeze(1)
     # Compute Huber loss
     criterion = nn.SmoothL1Loss()
-    loss = criterion(state_action_values, expected_state_action_values.unsqueeze(0))
+    loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
 
     # Optimize the model
     optimizer.zero_grad()
@@ -229,24 +234,27 @@ for i_episode in range(num_episodes):
     
     state, done = env.reset()
     state = state.flatten()
-    state = torch.from_numpy(state)
+    state = torch.from_numpy(state).to(device)
     #state = state.double()
-    
+    k = 0
+    action = 0
     for t in count():
         # Select and perform an action
         
         #print("Episode {} step {}".format(i_episode,t))
-        if i_episode<=1:
+        if i_episode<=-1:
             action = torch.tensor(heuristicpolicy(env.unordered_observation()),device=device)
         else:
-            action = select_action(state)
+            if(not k):
+                action, k = select_action(state)
+            k = k - 1  
         #print(action)
         next_state, reward, done, _ = env.step(action)
         bestBerry = np.min(next_state[:,3])
         reward += np.exp(-0.01*bestBerry)
-        env.render()
+       # env.render()
         next_state = next_state.flatten()
-        next_state = torch.from_numpy(next_state)
+        next_state = torch.from_numpy(next_state).to(device)
         #next_state = next_state.double()
         reward = torch.tensor([reward], device=device)
 
@@ -270,7 +278,11 @@ for i_episode in range(num_episodes):
     # Update the target network, copying all weights and biases in DQN
     if i_episode % TARGET_UPDATE == 0:
         target_net.load_state_dict(policy_net.state_dict())
-
+    
+    with open(f'policynet/policynet_ep{i_episode}.pth', 'w') as f:
+        torch.save(policy_net.state_dict(), f)
+    with open(f'targetnet/targetnet_ep{i_episode}.pth', 'w') as f:
+        torch.save(target_net.state_dict(), f)
 print('Complete')
 env.render()
 plt.ioff()
