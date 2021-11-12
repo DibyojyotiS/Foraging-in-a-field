@@ -234,6 +234,11 @@ class BerryFieldEnv_MatInput(gym.Env):
         x,y = self.state
         current_gridx = x//self.reward_grid_size[0]
         current_gridy = y//self.reward_grid_size[1]
+
+        # for top and right boundaries
+        if current_gridx >= self.size_visited_grid[0]: return 0
+        if current_gridy >= self.size_visited_grid[1]: return 0
+
         curiosity_reward =  1 - self.visited_grids[current_gridx, current_gridy]
         self.visited_grids[current_gridx, current_gridy] = 1
         return curiosity_reward
