@@ -19,7 +19,10 @@ class BerryFieldEnv_MatInput(gym.Env):
                  drain_rate, reward_rate,
                  max_steps,
                  initial_state, circular_berries=True, circular_agent=True,
-                 observation_type = "unordered"):
+                 observation_type = "unordered", 
+                 reward_curiosity = True, reward_curiosity_beta=0.25,
+                 reward_grid_size = (100,100) # should divide respective dimention of field_size
+                 ):
 
         super(BerryFieldEnv_MatInput, self).__init__()
 
@@ -77,6 +80,16 @@ class BerryFieldEnv_MatInput(gym.Env):
         # announce picked berries with verbose
         self.verbose = False
 
+        # for intrinstic reward
+        self.reward_curiosity = reward_curiosity
+        self.reward_curiosity_beta = reward_curiosity_beta
+        if reward_curiosity:
+            assert all(f%z == 0 for f,z in zip(field_size, reward_grid_size))
+            numx = field_size[0]//reward_grid_size[0]
+            numy = field_size[1]//reward_grid_size[1]
+            self.reward_grid_size = reward_grid_size
+            self.visited_grids = np.zeros((numx, numy))
+
 
     def reset(self):
         if self.viewer: self.viewer.close()
@@ -101,7 +114,10 @@ class BerryFieldEnv_MatInput(gym.Env):
         self.state = (  min(max(0, x), self.FIELD_SIZE[0]), 
                         min(max(0, y), self.FIELD_SIZE[1]) )
 
-        reward = self.pick_collided_berries()  - self.DRAIN_RATE*(action != 0)
+        juice_reward = self.pick_collided_berries()
+        living_cost = - self.DRAIN_RATE*(action != 0)
+        reward = juice_reward + living_cost
+
         observation = self.get_observation()
         self.cummulative_reward += reward
         self.observation = observation
@@ -110,6 +126,13 @@ class BerryFieldEnv_MatInput(gym.Env):
         x,y = self.state
         w,h = self.OBSERVATION_SPACE_SIZE
         W,H = self.FIELD_SIZE
+
+        # for curisity reward (don't add to self.cummulative_reward)
+        if self.reward_curiosity:
+            curiosity_reward = self.curiosity_reward()
+            reward = reward * self.reward_curiosity_beta + \
+                 curiosity_reward * (1 - self.reward_curiosity_beta)
+
         info = {
             'relative_coordinates': [self.state[0] - self.INITIAL_STATE[0], self.state[1] - self.INITIAL_STATE[1]],
             'dist_from_edge':[
@@ -200,6 +223,15 @@ class BerryFieldEnv_MatInput(gym.Env):
 
         return observation  
         
+    
+    def curiosity_reward(self):
+        x,y = self.state
+        current_gridx = x//self.reward_grid_size[0]
+        current_gridy = y//self.reward_grid_size[1]
+        curiosity_reward =  1 - self.visited_grids[current_gridx, current_gridy]
+        self.visited_grids[current_gridx, current_gridy] = 1
+        return curiosity_reward
+
     
     def pick_collided_berries(self):
         agent_bbox = (*self.state, self.AGENT_SIZE, self.AGENT_SIZE)
@@ -351,7 +383,7 @@ class BerryFieldEnv_MatInput(gym.Env):
             self.viewer.add_onetime(line)
 
         # draw position and total reward
-        label = pyglet.text.Label(f'x:{self.state[0]} y:{self.state[1]} a:{self.lastaction} \t total-reward:{self.cummulative_reward:.4f}', 
+        label = pyglet.text.Label(f'x:{self.state[0]} y:{self.state[1]} a:{self.lastaction} \t total-reward:{self.cummulative_reward:.4f} Step: {self.num_steps}', 
                                     x=screenw*0.1, y=screenh*0.9, color=(0, 0, 0, 255))
         self.viewer.add_onetimeText(label)
 

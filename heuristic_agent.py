@@ -46,6 +46,7 @@ obs, r, done, info = env.step(0)
 while not done:
     a = heuristicpolicy(obs)
     obs, r, done, info = env.step(a)
+    print(r)
     cummulative_rewards.append(env.cummulative_reward)
     step+=1
     env.render()

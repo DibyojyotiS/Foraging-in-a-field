@@ -48,7 +48,8 @@ class Memory:  # stored as ( s, a, r, s_ ) in SumTree
         p = self._get_priority(error)
         self.tree.update(idx, p)
 
-
+    def __len__(self):
+        return self.tree.n_entries
 
 
 
