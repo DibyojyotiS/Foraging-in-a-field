@@ -1,10 +1,7 @@
 # source: https://github.com/rlcode/per
 
 import random
-import torch
 import numpy as np
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Memory:  # stored as ( s, a, r, s_ ) in SumTree
     e = 0.01
@@ -17,7 +14,7 @@ class Memory:  # stored as ( s, a, r, s_ ) in SumTree
         self.capacity = capacity
 
     def _get_priority(self, error):
-        return (torch.abs(error) + self.e) ** self.a
+        return (np.abs(error) + self.e) ** self.a
 
     def add(self, error, sample):
         p = self._get_priority(error)
@@ -27,7 +24,7 @@ class Memory:  # stored as ( s, a, r, s_ ) in SumTree
         batch = []
         idxs = []
         segment = self.tree.total() / n
-        priorities = torch.zeros(n, device=device)
+        priorities = []
 
         self.beta = np.min([1., self.beta + self.beta_increment_per_sampling])
 
@@ -37,12 +34,12 @@ class Memory:  # stored as ( s, a, r, s_ ) in SumTree
 
             s = random.uniform(a, b)
             (idx, p, data) = self.tree.get(s)
-            priorities[i] = p
+            priorities.append(p)
             batch.append(data)
             idxs.append(idx)
 
         sampling_probabilities = priorities / self.tree.total()
-        is_weight = torch.pow(self.tree.n_entries * sampling_probabilities, -self.beta)
+        is_weight = np.power(self.tree.n_entries * sampling_probabilities, -self.beta)
         is_weight /= is_weight.max()
 
         return batch, idxs, is_weight
@@ -63,8 +60,8 @@ class SumTree:
 
     def __init__(self, capacity):
         self.capacity = capacity
-        self.tree = torch.zeros(2 * capacity - 1, device=device)
-        self.data = [None for _ in range(capacity)]
+        self.tree = np.zeros(2 * capacity - 1)
+        self.data = np.zeros(capacity, dtype=object)
         self.n_entries = 0
 
     # update to the root node

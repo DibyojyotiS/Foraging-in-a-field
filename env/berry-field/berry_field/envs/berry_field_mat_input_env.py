@@ -88,11 +88,13 @@ class BerryFieldEnv_MatInput(gym.Env):
             numx = field_size[0]//reward_grid_size[0]
             numy = field_size[1]//reward_grid_size[1]
             self.reward_grid_size = reward_grid_size
+            self.size_visited_grid = (numx, numy)
             self.visited_grids = np.zeros((numx, numy))
 
 
     def reset(self):
         if self.viewer: self.viewer.close()
+        
         self.done = False
         self.state = self.INITIAL_STATE
         self.num_steps = 0
@@ -101,6 +103,10 @@ class BerryFieldEnv_MatInput(gym.Env):
         self.observation = self.get_observation()
         self.lastaction = 0
         self.berry_collision_tree = copy.deepcopy(self.BERRY_COLLISION_TREE)
+
+        if self.reward_curiosity:
+            self.visited_grids = np.zeros(self.size_visited_grid)
+
         return self.observation, False
 
 
