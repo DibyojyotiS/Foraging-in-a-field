@@ -1,10 +1,7 @@
 # source: https://github.com/rlcode/per
 
 import random
-import torch
 import numpy as np
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Memory:  # stored as ( s, a, r, s_ ) in SumTree
     e = 0.01
@@ -17,7 +14,7 @@ class Memory:  # stored as ( s, a, r, s_ ) in SumTree
         self.capacity = capacity
 
     def _get_priority(self, error):
-        return (torch.abs(error) + self.e) ** self.a
+        return (np.abs(error) + self.e) ** self.a
 
     def add(self, error, sample):
         p = self._get_priority(error)
@@ -27,9 +24,9 @@ class Memory:  # stored as ( s, a, r, s_ ) in SumTree
         batch = []
         idxs = []
         segment = self.tree.total() / n
-        priorities = torch.zeros(n, device=device)
+        priorities = np.zeros(n)
 
-        self.beta = np.min([1., self.beta + self.beta_increment_per_sampling])
+        self.beta = min(1., self.beta + self.beta_increment_per_sampling)
 
         for i in range(n):
             a = segment * i
@@ -41,9 +38,12 @@ class Memory:  # stored as ( s, a, r, s_ ) in SumTree
             batch.append(data)
             idxs.append(idx)
 
-        sampling_probabilities = priorities / self.tree.total()
-        is_weight = torch.pow(self.tree.n_entries * sampling_probabilities, -self.beta)
+        sampling_probabilities = priorities / self.tree.total() + 10E-8 # for zero priority events
+        is_weight = np.power(self.tree.n_entries * sampling_probabilities, -self.beta)
         is_weight /= is_weight.max()
+
+        # assert len(batch) == len(idxs), print(is_weight)
+        # assert len(idxs) == len(is_weight), print(is_weight)
 
         return batch, idxs, is_weight
 
@@ -63,7 +63,7 @@ class SumTree:
 
     def __init__(self, capacity):
         self.capacity = capacity
-        self.tree = torch.zeros(2 * capacity - 1, device=device)
+        self.tree = np.zeros(2 * capacity - 1)
         self.data = [None for _ in range(capacity)]
         self.n_entries = 0
 
@@ -117,5 +117,4 @@ class SumTree:
     def get(self, s):
         idx = self._retrieve(0, s)
         dataIdx = idx - self.capacity + 1
-
         return (idx, self.tree[idx], self.data[dataIdx])
