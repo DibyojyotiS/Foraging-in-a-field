@@ -1,6 +1,7 @@
 import numpy as np
-import get_env
-import matplotlib.pyplot as plt
+import random
+import torch
+import math
 
 def getTrueAngles(directions, referenceVector=[0,1]):
     curls = np.cross(directions, referenceVector)
@@ -38,19 +39,25 @@ def heuristicpolicy(obs, distance_discount=0.8):
     return action
 
 
-env = get_env.get_env()
-step = 0
-cummulative_rewards = []
-done = False
-obs, r, done, info = env.step(0)
-while not done:
-    a = heuristicpolicy(obs)
-    obs, r, done, info = env.step(a)
-    # print(r)
-    cummulative_rewards.append(env.cummulative_reward)
-    step+=1
-    env.render()
-if env.viewer: env.viewer.close()
-print(env.cummulative_reward)
-plt.plot(cummulative_rewards) 
-plt.show()
+
+EPS_START = 0.9
+EPS_END = 0.05
+EPS_DECAY = 200
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+steps_done = 0
+def select_action(state, policy_net):
+    global steps_done
+    sample = random.random()
+    eps_threshold = EPS_END + (EPS_START - EPS_END) * \
+        math.exp(-1. * steps_done / EPS_DECAY)
+    steps_done += 1
+    if sample > eps_threshold:
+        with torch.no_grad():
+            # t.max(1) will return largest column value of each row.
+            # second column on max result is index of where max element was
+            # found, so we pick action with the larger expected reward.
+            return policy_net(state).max(1)[1].view(1, 1)
+    else:
+        action = heuristicpolicy(state, distance_discount=0.8)
+        return torch.tensor([[action]], device=device, dtype=torch.long)
