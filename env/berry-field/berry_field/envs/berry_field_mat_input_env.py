@@ -129,9 +129,7 @@ class BerryFieldEnv_MatInput(gym.Env):
         self.observation = observation
         self.done = True if self.num_steps >= self.MAX_STEPS else False
 
-        x,y = self.state
-        w,h = self.OBSERVATION_SPACE_SIZE
-        W,H = self.FIELD_SIZE
+
 
         # for curisity reward (don't add to self.cummulative_reward)
         if self.reward_curiosity:
@@ -139,15 +137,7 @@ class BerryFieldEnv_MatInput(gym.Env):
             reward = reward * self.reward_curiosity_beta + \
                  curiosity_reward * (1 - self.reward_curiosity_beta)
 
-        info = {
-            'relative_coordinates': [self.state[0] - self.INITIAL_STATE[0], self.state[1] - self.INITIAL_STATE[1]],
-            'dist_from_edge':[
-                w//2 - max(0, w//2 - x), # distance from left edge; w//2 if not in view
-                w//2 - max(0, x+w//2 - W), # distance from right edge; w//2 if not in view
-                h//2 - max(0, y+h//2 - H), # distance from the top edge; h//2 if not in view
-                h//2 - max(0, h//2 - y) # distance from the bottom edge; h//2 if not in view
-            ]
-        }
+        info = self.get_info()
 
         if self.done and self.viewer is not None: self.viewer = self.viewer.close()
         return observation, reward, self.done, info
@@ -162,6 +152,24 @@ class BerryFieldEnv_MatInput(gym.Env):
             observation = self.bucket_obseration()
         return observation
 
+
+    def get_info(self):
+
+        x,y = self.state
+        w,h = self.OBSERVATION_SPACE_SIZE
+        W,H = self.FIELD_SIZE
+        
+        info = {
+            'relative_coordinates': [self.state[0] - self.INITIAL_STATE[0], self.state[1] - self.INITIAL_STATE[1]],
+            'dist_from_edge':[
+                w//2 - max(0, w//2 - x), # distance from left edge; w//2 if not in view
+                w//2 - max(0, x+w//2 - W), # distance from right edge; w//2 if not in view
+                h//2 - max(0, y+h//2 - H), # distance from the top edge; h//2 if not in view
+                h//2 - max(0, h//2 - y) # distance from the bottom edge; h//2 if not in view
+            ]
+        }
+
+        return info
 
     def ordered_observation(self):
         """ unoredered_observation sorted clockwise """
