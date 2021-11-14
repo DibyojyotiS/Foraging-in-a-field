@@ -15,7 +15,7 @@ def get_original_env():
 
     return env
 
-def get_env(observation_type = "ordered", reward_curiosity = True, 
+def get_env(observation_type = "ordered", bucket_angle = 45, reward_curiosity = True, 
             reward_curiosity_beta=0.25, reward_grid_size = (100,100)):
     env = gym.make('berry_field:berry_field_mat_input-v0',
                    file_paths=file_paths,
@@ -28,7 +28,8 @@ def get_env(observation_type = "ordered", reward_curiosity = True,
                    observation_type = observation_type,
                    reward_curiosity = reward_curiosity, 
                    reward_curiosity_beta=reward_curiosity_beta,
-                   reward_grid_size = reward_grid_size # should divide respective dimention of field_size
+                   reward_grid_size = reward_grid_size, # should divide respective dimention of field_size
+                   bucket_angle = bucket_angle
                    )
 
     return env

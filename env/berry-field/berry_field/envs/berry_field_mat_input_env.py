@@ -20,6 +20,7 @@ class BerryFieldEnv_MatInput(gym.Env):
                  max_steps,
                  initial_state, circular_berries=True, circular_agent=True,
                  observation_type = "unordered", 
+                 bucket_angle = 45,
                  reward_curiosity = True, reward_curiosity_beta=0.25,
                  reward_grid_size = (100,100) # should divide respective dimention of field_size
                  ):
@@ -43,9 +44,11 @@ class BerryFieldEnv_MatInput(gym.Env):
         self.CIRCULAR_BERRIES = circular_berries
         self.CIRCULAR_AGENT = circular_agent
         self.OBSERVATION_TYPE = observation_type
+        
 
-        self.sectors = [((x-22.5)%360, x+22.5) for x in range(0,360,45)] # for observatiof bucket type
-        self.OBSHAPE = 35 
+        self.half_bucket_angle = bucket_angle/2
+        self.sectors = [((x-self.half_bucket_angle)%360, x+self.half_bucket_angle) for x in range(0,360,bucket_angle)] # for observatiof bucket type
+        self.OBSHAPE = 40 
         self.NUMBUCKETS = len(self.sectors) # for 'buckets' type observation
 
         self.done = False
