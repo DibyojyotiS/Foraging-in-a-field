@@ -52,6 +52,7 @@ class BerryFieldEnv_MatInput(gym.Env):
         self.state = initial_state
         self.num_steps = 0
         self.action_space = gym.spaces.Discrete(9)
+        self.num_berry_collected = 0
 
         self.viewer = None
 
@@ -102,6 +103,7 @@ class BerryFieldEnv_MatInput(gym.Env):
         self.cummulative_reward = 0.5
         self.observation = self.get_observation()
         self.lastaction = 0
+        self.num_berry_collected = 0
         self.berry_collision_tree = copy.deepcopy(self.BERRY_COLLISION_TREE)
 
         if self.reward_curiosity:
@@ -257,8 +259,8 @@ class BerryFieldEnv_MatInput(gym.Env):
         boxIds, boxes = self.berry_collision_tree.find_collisions(agent_bbox, 
                                             self.CIRCULAR_AGENT, self.AGENT_SIZE/2, return_boxes=True)
 
-        if self.verbose and len(boxIds) > 0:
-            print("picked ", len(boxIds), "berries")
+        self.num_berry_collected += len(boxIds)
+        if self.verbose and len(boxIds) > 0: print("picked ", len(boxIds), "berries")
 
         sizes = boxes[:,2] # boxes are an array with rows as [x,y, size, size]
         reward = self.REWARD_RATE * np.sum(sizes)
@@ -407,3 +409,6 @@ class BerryFieldEnv_MatInput(gym.Env):
         self.viewer.add_onetimeText(label)
 
         return self.viewer.render(returnRGB)
+
+    def get_numBerriesPicked(self):
+        return self.num_berry_collected
