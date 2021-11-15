@@ -134,15 +134,13 @@ def heuristicpolicy(obs, distance_discount=0.8):
     lastaction = action
     return action
 
-steps_done = 0
 
 
-def select_action(state):
+def select_action(state, episode_number):
     global steps_done
     sample = random.random()
     eps_threshold = EPS_END + (EPS_START - EPS_END) * \
-        math.exp(-1. * steps_done / EPS_DECAY)
-    steps_done += 1
+        math.exp(-1. * episode_number / EPS_DECAY)
     if sample > eps_threshold:
         with torch.no_grad():
             # t.max(1) will return largest column value of each row.
@@ -246,7 +244,7 @@ for i_episode in range(num_episodes):
             action = torch.tensor(heuristicpolicy(env.unordered_observation()),device=device)
         else:
             if(not k):
-                action, k = select_action(state)
+                action, k = select_action(state, i_episode)
             k = k - 1  
         #print(action)
         next_state, reward, done, _ = env.step(action)
@@ -279,9 +277,9 @@ for i_episode in range(num_episodes):
     if i_episode % TARGET_UPDATE == 0:
         target_net.load_state_dict(policy_net.state_dict())
     
-    with open(f'policynet/policynet_ep{i_episode}.pth', 'w') as f:
+    with open(f'policynet/policynet_ep{i_episode}.pth', 'wb') as f:
         torch.save(policy_net.state_dict(), f)
-    with open(f'targetnet/targetnet_ep{i_episode}.pth', 'w') as f:
+    with open(f'targetnet/targetnet_ep{i_episode}.pth', 'wb') as f:
         torch.save(target_net.state_dict(), f)
 print('Complete')
 env.render()
